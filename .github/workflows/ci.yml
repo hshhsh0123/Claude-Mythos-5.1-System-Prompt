@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: List markdown files
+        run: |
+          ls -lh *.md
+          wc -l *.md
+
+      - name: Fail on empty markdown files
+        run: |
+          for f in *.md; do
+            [ -s "$f" ] || { echo "::error file=$f::empty file"; exit 1; }
+          done
