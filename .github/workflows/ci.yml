@@ -4,9 +4,19 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 1"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   check:
+    name: Basic checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,3 +31,74 @@ jobs:
           for f in *.md; do
             [ -s "$f" ] || { echo "::error file=$f::empty file"; exit 1; }
           done
+
+      - name: Fail on files over 1 MB
+        run: |
+          for f in *.md; do
+            size=$(stat -c %s "$f")
+            if [ "$size" -gt 1048576 ]; then
+              echo "::error file=$f::file is ${size} bytes (limit 1048576)"
+              exit 1
+            fi
+          done
+
+      - name: Check trailing whitespace and tabs
+        run: |
+          if grep -nP '\t' *.md | head -20 | grep -q .; then
+            echo "::warning::tab characters found in markdown files"
+          fi
+          if grep -nP ' +$' *.md | head -20 | grep -q .; then
+            echo "::warning::trailing whitespace found in markdown files"
+          fi
+
+  lint:
+    name: Markdown lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run markdownlint
+        uses: DavidAnson/markdownlint-cli2-action@v16
+        continue-on-error: true
+        with:
+          globs: "*.md"
+
+  links:
+    name: Link check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check links
+        uses: lycheeverse/lychee-action@v1
+        continue-on-error: true
+        with:
+          args: --no-progress --max-concurrency 4 "*.md"
+          fail: false
+
+  stats:
+    name: Stats summary
+    runs-on: ubuntu-latest
+    needs: [check]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write summary
+        run: |
+          {
+            echo "## Markdown stats"
+            echo
+            echo "| File | Lines | Words | Bytes |"
+            echo "| --- | ---: | ---: | ---: |"
+            for f in *.md; do
+              echo "| $f | $(wc -l < "$f") | $(wc -w < "$f") | $(stat -c %s "$f") |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload stats artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: md-stats
+          path: |
+            *.md
+          retention-days: 7
