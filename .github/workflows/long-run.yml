@@ -1,0 +1,41 @@
+name: Long Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "How many minutes to run"
+        required: false
+        default: "15"
+  push:
+    branches:
+      - ccr-d29d79cf-jjyj81
+    paths:
+      - ".github/workflows/long-run.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  long-run:
+    name: Run for a while
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tick every minute
+        env:
+          MINUTES: ${{ github.event.inputs.minutes || '15' }}
+        run: |
+          echo "Running for ${MINUTES} minutes"
+          for i in $(seq 1 "$MINUTES"); do
+            echo "::group::minute $i/${MINUTES}"
+            date -u +"%Y-%m-%dT%H:%M:%SZ"
+            echo "::endgroup::"
+            echo "- minute $i/${MINUTES}: $(date -u +%H:%M:%S)Z" >> "$GITHUB_STEP_SUMMARY"
+            sleep 60
+          done
+
+      - name: Done
+        run: echo "Finished after ${{ github.event.inputs.minutes || '15' }} minutes"
